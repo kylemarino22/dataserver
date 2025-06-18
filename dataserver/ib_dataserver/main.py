@@ -2,20 +2,21 @@ import asyncio
 import time
 import atexit
 
-from .core.ib_functions import (
+from dataserver.ib_dataserver.core.ib_functions import (
     connect_ib,
     test_ib_connection,
     disconnect_ib,
 )
-from .core.instrument_data import (
+from dataserver.ib_dataserver.core.instrument_data import (
     refresh_contract_cache
 )
-from .core.server_functions import start_server
-from .core.ticker_event_functions import (
+from dataserver.ib_dataserver.core.server_functions import start_server
+from dataserver.ib_dataserver.core.ticker_event_functions import (
     subscription_loop,
     flush_all_cache,
+    periodic_flush
 )
-from .core.ServerData import ServerData
+from dataserver.ib_dataserver.core.ServerData import ServerData
 from kyle_tests.ib_monitor.ib_monitor import check_ib_valid_time
 
 
@@ -72,6 +73,16 @@ async def _ib_loop() -> None:
             # If any exception occurs (e.g. network error), pause before retrying
             await asyncio.sleep(60)
 
+async def run_all() -> None:
+    """
+    Launch both the IB loop and the periodic flush task concurrently.
+    """
+    # Start the periodic flush as a background task
+    asyncio.create_task(periodic_flush(interval_seconds=60))
+
+    # Then run the IB loop (this will run until cancelled / exception)
+    await _ib_loop()
+
 
 def main() -> None:
     """
@@ -88,7 +99,7 @@ def main() -> None:
     start_server()
 
     # Run the async IB loop until the process is killed
-    asyncio.run(_ib_loop())
+    asyncio.run(run_all())
 
 
 if __name__ == "__main__":

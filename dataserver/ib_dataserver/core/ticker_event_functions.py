@@ -2,10 +2,12 @@ import asyncio
 import numpy as np
 from datetime import datetime, timezone
 import os
-
+from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 import pyarrow as pa
+import uuid
+
 # import pyarrow.compute as pc
 
 
@@ -198,167 +200,126 @@ async def cache_price_data(key, data_tick):
         else:
             avg_ticks_sec = float('inf')  # In case the time difference is 0
         
-        print(f"Writing parquet data for {key}. Average ticks/sec: {avg_ticks_sec:.2f}")
+        print(f"[Info] Writing parquet data for {key}. Average ticks/sec: {avg_ticks_sec:.2f}")
         await save_to_parquet(key)
 
-import os
-import pyarrow as pa
-import pyarrow.parquet as pq
-
-def try_read_table(file_path):
-    """
-    Attempts to read a Parquet file from the specified path, sanitizes it by
-    removing extraneous columns (if any) and ensuring the timestamp column has
-    the correct type. Returns a pyarrow Table if successful, or None if an error occurs.
-    """
-    try:
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-            table = pq.read_table(file_path)
-            # Remove extraneous index column if present.
-            if "__index_level_0__" in table.column_names:
-                idx = table.column_names.index("__index_level_0__")
-                table = table.remove_column(idx)
-            # Ensure the timestamp column has the correct type.
-            target_ts_type = pa.timestamp('ns', tz='UTC')
-            if "timestamp" in table.column_names:
-                ts_col = table.column("timestamp")
-                if ts_col.type != target_ts_type:
-                    new_columns = []
-                    for name, col in zip(table.column_names, table.columns):
-                        if name == "timestamp":
-                            new_columns.append(col.cast(target_ts_type))
-                        else:
-                            new_columns.append(col)
-                    table = pa.Table.from_arrays(new_columns, names=table.column_names)
-            return table
-    except Exception:
-        return None
-    return None
 
 async def save_to_parquet(key):
     """
-    Writes cached price data to two redundant Parquet files, using a dual-copy
-    system to guard against file corruption. For every batch write, the new data is written to
-    the alternate file copy.
+    Writes cached price data into a single daily Parquet file directly under the contract directory.
 
-    The key is expected to be in the format "instrument_code/date".
-    Each instrument will have its own directory under PARQUET_PATH, and the filename will be 
-    derived from the date plus a suffix indicating the copy.
+    Folder layout:
+        PARQUET_PATH/{instrument_code}/contract={contract}/
+            {YYYYMMDD}.parquet
+
+    We write only the 5 tick columns here:
+        timestamp (as UTC datetime),
+        bid_price (float64),
+        ask_price (float64),
+        bid_size  (int64),
+        ask_size  (int64)
+
+    The partition values "contract" and "trading_date" are inferred at read time.
     """
-    # ------------------------------------------------------------------------------
-    # Block 1: Parse key, initialize directories, and build file paths.
-    # ------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
+    # Block 1: Parse key and retrieve cached rows.
+    # ----------------------------------------------------------------------------
     try:
-        instrument_code, date_str = key.split('/')
+        instrument_code, contract = key.split("/")
     except ValueError:
-        raise ValueError("Key must be in the format 'instrument_code/date'")
-    
-    # Reference to the cache (assumed to be available as ServerData.parquet_cache)
-    parquet_cache = ServerData.parquet_cache
+        raise ValueError("Key must be in the format 'instrument_code/contract'")
 
-    # Create directory for this instrument if it doesn't exist.
-    instrument_dir = os.path.join(PARQUET_PATH, instrument_code)
-    os.makedirs(instrument_dir, exist_ok=True)
-    
-    # Define file paths for dual-copy redundancy.
-    file_path_primary = os.path.join(instrument_dir, f"{date_str}_primary.parquet")
-    file_path_backup  = os.path.join(instrument_dir, f"{date_str}_backup.parquet")
-    
-    # ------------------------------------------------------------------------------
-    # Block 1.1: Transition from the Old Naming System.
-    # ------------------------------------------------------------------------------
-    # Check if there's an old file without the new suffix.
-    old_file = os.path.join(instrument_dir, f"{date_str}.parquet")
-    if os.path.exists(old_file) and os.path.getsize(old_file) > 0:
-        old_table = try_read_table(old_file)
-        if old_table is not None:
-            # If the new primary file doesn't already exist, rename the old file.
-            if not os.path.exists(file_path_primary):
-                os.rename(old_file, file_path_primary)
-                # print(f"[INFO] Renamed old file {old_file} to {file_path_primary}")
-                # Optionally, you could also log this transition.
-    
-    # If there's no new data to write, simply return.
-    if not parquet_cache[key]:
+    parquet_cache = ServerData.parquet_cache
+    rows = parquet_cache.get(key, [])
+
+    if not rows:
+        # Nothing to write
         return
 
-    # ------------------------------------------------------------------------------
-    # Block 2: Build the New Table from Cached Data.
-    # ------------------------------------------------------------------------------
-    try:
-        timestamps, bid_prices, ask_prices, bid_sizes, ask_sizes = zip(*parquet_cache[key])
-    except ValueError:
-        timestamps = [row[0] for row in parquet_cache[key]]
-        bid_prices = [row[1] for row in parquet_cache[key]]
-        ask_prices = [row[2] for row in parquet_cache[key]]
-        bid_sizes = [row[3] for row in parquet_cache[key]]
-        ask_sizes = [row[4] for row in parquet_cache[key]]
-    
+    # ----------------------------------------------------------------------------
+    # Block 2: Derive trading_date (YYYYMMDD) from the first row's datetime.
+    # ----------------------------------------------------------------------------
+    first_dt: datetime = rows[0][0]
+    if first_dt.tzinfo is None:
+        # Ensure it's timezone‐aware UTC; assume naive dt is UTC
+        first_dt = first_dt.replace(tzinfo=timezone.utc)
+    trading_date_str = first_dt.strftime("%Y%m%d")
+
+    # ----------------------------------------------------------------------------
+    # Block 3: Build contract directory and ensure it exists.
+    # ----------------------------------------------------------------------------
+    contract_dir = Path(PARQUET_PATH) / instrument_code / f"contract={contract}"
+    contract_dir.mkdir(parents=True, exist_ok=True)
+
+    # ----------------------------------------------------------------------------
+    # Block 4: Define the single daily filename.
+    # ----------------------------------------------------------------------------
+    daily_file = contract_dir / f"{trading_date_str}.parquet"
+    tmp_file   = contract_dir / f"{trading_date_str}.parquet.tmp"
+
+    # ----------------------------------------------------------------------------
+    # Block 5: Build a PyArrow Table from the cached rows.
+    # ----------------------------------------------------------------------------
+    timestamps = [r[0] for r in rows]
+    bid_prices = [r[1] for r in rows]
+    ask_prices = [r[2] for r in rows]
+    bid_sizes  = [r[3] for r in rows]
+    ask_sizes  = [r[4] for r in rows]
+
     new_table = pa.Table.from_arrays(
         [
-            pa.array(timestamps, type=pa.timestamp('ns', tz='UTC')),
-            pa.array(bid_prices),
-            pa.array(ask_prices),
-            pa.array(bid_sizes),
-            pa.array(ask_sizes)
+            pa.array(timestamps, type=pa.timestamp("ns", tz="UTC")),
+            pa.array(bid_prices, type=pa.float64()),
+            pa.array(ask_prices, type=pa.float64()),
+            pa.array(bid_sizes,  type=pa.int64()),
+            pa.array(ask_sizes,  type=pa.int64()),
         ],
-        names=['timestamp', 'bid_price', 'ask_price', 'bid_size', 'ask_size']
+        names=[
+            "timestamp",
+            "bid_price",
+            "ask_price",
+            "bid_size",
+            "ask_size",
+        ],
     )
 
-    # ------------------------------------------------------------------------------
-    # Block 3: Read Existing Files and Merge with New Data.
-    # ------------------------------------------------------------------------------
-    primary_table = try_read_table(file_path_primary)
-    backup_table  = try_read_table(file_path_backup)
-    
-    active_table = None
-    active_path = None
-    
-    # Determine the active (most recent valid) table.
-    if primary_table is not None and backup_table is not None:
-        if os.path.getmtime(file_path_primary) >= os.path.getmtime(file_path_backup):
-            active_table = primary_table
-            active_path = file_path_primary
-        else:
-            active_table = backup_table
-            active_path = file_path_backup
-    elif primary_table is not None:
-        active_table = primary_table
-        active_path = file_path_primary
-    elif backup_table is not None:
-        active_table = backup_table
-        active_path = file_path_backup
-
-    if active_table is not None:
-        combined_table = pa.concat_tables([active_table, new_table])
+    # ----------------------------------------------------------------------------
+    # Block 6: Read existing daily file (if any) and merge with new data.
+    # ----------------------------------------------------------------------------
+    if daily_file.exists():
+        try:
+            # Read only the columns present in new_table to drop any extras (e.g. 'contract')
+            existing_table = pq.read_table(
+                str(daily_file),
+                columns=new_table.schema.names
+            )
+            # print(f"  existing rows: {existing_table.num_rows}")
+            combined_table = pa.concat_tables([existing_table, new_table])
+        except Exception as err:
+            print(f"  failed to read existing parquet: {err!r}")
+            combined_table = new_table
     else:
         combined_table = new_table
 
-    # ------------------------------------------------------------------------------
-    # Block 4: Determine Target File and Perform Atomic Write.
-    # ------------------------------------------------------------------------------
-    # Write to the alternate copy.
-    if active_path == file_path_primary:
-        target_file = file_path_backup
-    else:
-        target_file = file_path_primary
-
-    if active_path is None:
-        target_file = file_path_primary
-
-    # Write combined_table atomically (via a temporary file).
-    tmp_file = target_file + ".tmp"
+    # ----------------------------------------------------------------------------
+    # Block 7: Write the combined table atomically (via a temporary file).
+    # ----------------------------------------------------------------------------
     try:
         pq.write_table(combined_table, tmp_file)
-        os.replace(tmp_file, target_file)
+        os.replace(tmp_file, daily_file)  # atomic rename
     except Exception as e:
-        raise RuntimeError(f"Error writing to {target_file}: {e}")
+        # Clean up partial temp file on failure
+        if tmp_file.exists():
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+        raise RuntimeError(f"Error writing daily Parquet file to {daily_file}: {e}")
 
-    # ------------------------------------------------------------------------------
-    # Block 5: Clear the Cache for the Given Key after Successful Write.
-    # ------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
+    # Block 8: Clear the in‐memory cache for this key.
+    # ----------------------------------------------------------------------------
     parquet_cache[key] = []
-
 
 
 
@@ -382,3 +343,20 @@ def flush_all_cache():
                     print(f"[ERROR] Failed to flush cache for {key}: {e}")
     finally:
         new_loop.close()
+
+        
+async def periodic_flush(interval_seconds: int = 60) -> None:
+    """
+    Background task that wakes up every `interval_seconds` and flushes any
+    non-empty caches by calling save_to_parquet(key) for each key.
+    """
+    while True:
+        await asyncio.sleep(interval_seconds)
+        now = datetime.now(timezone.utc)
+        for key, block in list(ServerData.parquet_cache.items()):
+            if block:
+                try:
+                    await save_to_parquet(key)
+                    print(f"[INFO] Periodic flush at {now.isoformat()} for {key}")
+                except Exception as e:
+                    print(f"[ERROR] Periodic flush failed for {key}: {e}")
