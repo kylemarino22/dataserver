@@ -45,9 +45,9 @@ def remove_queue(stream, subscriber_id):
 
 def is_market_open_for_key(key):
     """Get market status for key"""
-    params = key.split("/")
-    futures_contract = futuresContract(*params) 
-    return is_market_open_sync(futures_contract)
+    # params = key.split("/")
+    # futures_contract = futuresContract(*params) 
+    return is_market_open_sync(key)
 
 
 def monitor_queues():

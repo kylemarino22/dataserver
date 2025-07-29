@@ -1,0 +1,251 @@
+Instrument,AssetClass,ContractType
+# FX Gets priority over other instruments
+# AUDUSD, FX, Forex
+# USDCAD, FX, Forex
+# CHFUSD, FX, Forex
+# EURUSD, FX, Forex
+# GBPUSD, FX, Forex
+# USDHKD, FX, Forex
+# USDJPY, FX, Forex
+# USDKRW, FX, Forex
+# USDCNH, FX, Forex
+# USDSGD, FX, Forex
+# USDMXN, FX, Forex
+# USDSEK, FX, Forex
+
+# Futures instruments
+AUD_micro,FX, Future
+BRE,FX, Future
+CAD_micro,FX, Future
+CHF_micro,FX, Future
+CNH,FX, Future
+CZK,FX, Future
+EUR_micro,FX, Future
+GBP_micro,FX, Future
+INR,FX, Future
+IRS,FX, Future
+JPY_mini,FX, Future
+KRWUSD_mini,FX, Future
+MXP,FX, Future
+NOK,FX, Future
+NZD,FX, Future
+PLN,FX, Future
+SEK,FX, Future
+SGD_mini,FX, Future
+TWD-mini,FX, Future
+ZAR,FX, Future
+RUR,FX, Future
+CLP,FX, Future
+
+CANOLA,Ags, Future
+COCOA,Ags, Future
+COFFEE,Ags, Future
+CORN_mini,Ags, Future
+FEEDCOW,Ags, Future
+GICS,Ags, Future
+LEANHOG,Ags, Future
+LIVECOW,Ags, Future
+MILLWHEAT,Ags, Future
+REDWHEAT,Ags, Future
+SOYBEAN_mini,Ags, Future
+SOYMEAL,Ags, Future
+SOYOIL,Ags, Future
+WHEAT_mini,Ags, Future
+
+
+V2X,Vol, Future
+VIX_mini,Vol, Future
+
+BOBL,Bond, Future
+BONO,Bond, Future
+BTP,Bond, Future
+BUND,Bond, Future
+BUXL,Bond, Future
+CAD10,Bond, Future
+CAD5,Bond, Future
+CH10,Bond, Future
+FED,Bond, Future
+GILT,Bond, Future
+IG,Bond, Future
+JGB-mini,Bond, Future
+KR10,Bond, Future
+OAT,Bond, Future
+SARONA,Bond, Future
+SOFR,Bond, Future
+SONIA3,Bond, Future
+US10,Bond, Future
+US20,Bond, Future
+US30,Bond, Future
+US5,Bond, Future
+
+AEX_mini,Equity, Future
+CAC,Equity, Future
+DAX,Equity, Future
+DJSTX-SMALL,Equity, Future
+DOW_mini,Equity, Future
+EUROSTX,Equity, Future
+FTSE100,Equity, Future
+FTSECHINAA,Equity, Future
+FTSETAIWAN,Equity, Future
+HANGTECH,Equity, Future
+HANG_mini,Equity, Future
+IBEX,Equity, Future
+KOSDAQ,Equity, Future
+KOSPI_mini,Equity, Future
+MSCIASIA,Equity, Future
+MSCIWORLD,Equity, Future
+MUMMY,Equity, Future
+NASDAQ_micro,Equity, Future
+NIKKEI,Equity, Future
+RUSSELL_mini,Equity, Future
+SGX,Equity, Future
+SMI,Equity, Future
+SP500_micro,Equity, Future
+SPI200,Equity, Future
+SWISSLEAD,Equity, Future
+TOPIX,Equity, Future
+
+
+BITCOIN,Metals, Future
+COPPER-micro,Metals, Future
+ETHER-micro,Metals, Future
+GOLD_micro,Metals, Future
+IRON,Metals, Future
+PALLAD,Metals, Future
+PLAT,Metals, Future
+SILVER,Metals, Future
+STEEL,Metals, Future
+
+BRENT_W,OilGas, Future
+CRUDE_W_mini,OilGas, Future
+EUA,OilGas, Future
+GASOIL,OilGas, Future
+GASOILINE_micro,OilGas, Future
+GAS_US_mini,OilGas, Future
+HEATOIL,OilGas, Future
+
+WHEY,Ags,Future
+LUMBER-new,Ags,Future
+OATIES,Ags,Future
+RICE,Ags,Future
+RUBBER,Ags,Future
+BTP3,Bond,Future
+US2,Bond,Future
+US3,Bond,Future
+SHATZ,Bond,Future
+EURIBOR,Bond,Future
+JGB-SGX-mini,Bond,Future
+KR3,Bond,Future
+US10U,Bond,Future
+
+
+ALUMINIUM,Metals,Future
+COPPER-mini,Metals,Future
+
+HANGENT,Equity,Future
+KOSPI,Equity,Future
+MIB,Equity,Future
+MSCIEAFA,Equity,Future
+MSCISING,Equity,Future
+MSCITAIWAN,Equity,Future
+FTSECHINAH,Equity,Future
+FTSEINDO,Equity,Future
+FTSEVIET,Equity,Future
+
+BOVESPA,Equity,Future
+EU-DIV30,Equity,Future
+EURO600,Equity,Future
+EUROSTX-LARGE,Equity,Future
+EUROSTX-SMALL,Equity,Future
+NASDAQ,Equity,Future
+NIKKEI400,Equity,Future
+OMX,Equity,Future
+R1000,Equity,Future
+RUSSELL,Equity,Future
+SMI-MID,Equity,Future
+SP400,Equity,Future
+
+AUD,FX,Future
+CAD,FX,Future
+CHF,FX,Future
+EUR,FX,Future
+GBP,FX,Future
+JPY,FX,Future
+SGD,FX,Future
+TWD,FX,Future
+
+BRENT-LAST,OilGas,Future
+CRUDE_ICE,OilGas,Future
+CRUDE_W,OilGas,Future
+ETHANOL,OilGas,Future
+GAS-LAST,OilGas,Future
+GAS-PEN,OilGas,Future
+GASOILINE,OilGas,Future
+GASOILINE_ICE,OilGas,Future
+GAS_US,OilGas,Future
+
+BBCOMM,Ags,Future
+BUTTER,Ags,Future
+CHEESE,Ags,Future
+MILK,Ags,Future
+MILKDRY,Ags,Future
+MILKWET,Ags,Future
+
+VIX,Vol,Future
+
+AEX,Equity,Future
+DOW,Equity,Future
+SP500,Equity,Future
+HANG,Equity,Future
+COPPER,Metals,Future
+ETHEREUM,Metals,Future
+GOLD,Metals,Future
+
+EURIBOR-ICE,Bond,Future
+JGB,Bond,Future
+COCOA_LDN,Ags,Future
+SOYBEAN,Ags,Future
+WHEAT,Ags,Future
+CORN,Ags,Future
+EUR_mini,FX,Future
+AUDJPY,FX,Future
+CHFJPY,FX,Future
+EURAUD,FX,Future
+EURCAD,FX,Future
+EURCHF,FX,Future
+GBPCHF,FX,Future
+GBPEUR,FX,Future
+GBPJPY,FX,Future
+YENEUR,FX,Future
+
+EU-AUTO,Sector,Future
+EU-BANKS,Sector,Future
+EU-BASIC,Sector,Future
+EU-CHEM,Sector,Future
+EU-CONSTRUCTION,Sector,Future
+EU-DJ-OIL,Sector,Future
+EU-DJ-TECH,Sector,Future
+EU-DJ-TELECOM,Sector,Future
+EU-DJ-UTIL,Sector,Future
+EU-FOOD,Sector,Future
+EU-HEALTH,Sector,Future
+EU-HOUSE,Sector,Future
+EU-INSURE,Sector,Future
+EU-MEDIA,Sector,Future
+EU-MID,Sector,Future
+EU-OIL,Sector,Future
+EU-REALESTATE,Sector,Future
+EU-RETAIL,Sector,Future
+EU-TECH,Sector,Future
+EU-TRAVEL,Sector,Future
+EU-UTILS,Sector,Future
+EUROSTX200-LARGE,Sector,Future
+JP-REALESTATE,Sector,Future
+US-DISCRETE,Sector,Future
+US-ENERGY,Sector,Future
+US-HEALTH,Sector,Future
+US-INDUSTRY,Sector,Future
+US-MATERIAL,Sector,Future
+US-REALESTATE,Sector,Future
+US-STAPLES,Sector,Future
+US-UTILS,Sector,Future

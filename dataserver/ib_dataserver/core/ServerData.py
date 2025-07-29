@@ -24,7 +24,7 @@ class ServerData:
     data_contracts = dataContracts(data)
     ib = None
 
-    contract_cache = {}
+    contract_cache = None
 
     parquet_cache = {}
 

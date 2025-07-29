@@ -1,6 +1,9 @@
 import ib_insync
 from ib_insync import IB
 
+from ib_insync import Contract as ibContract
+from ib_insync import Forex
+
 from sysdata.data_blob import dataBlob
 from sysbrokers.IB.ib_futures_contracts_data import ibFuturesContractData
 from sysbrokers.IB.ib_instruments_data import ibFuturesInstrumentData
@@ -10,14 +13,16 @@ from sysbrokers.IB.ib_contracts import (
 )
 from sysbrokers.IB.ib_connection_defaults import ib_defaults
 from sysobjects.contracts import futuresContract
+from sysbrokers.IB.config.ib_fx_config import *
 
-from .ServerData import ServerData
+from dataserver.ib_dataserver.core.ServerData import ServerData
 
 # data = dataBlob()
 # data.add_class_object(ibFuturesContractData)
 # data.add_class_object(ibFuturesInstrumentData)
 import ib_insync
 import logging
+import asyncio
 
 
 
@@ -51,8 +56,49 @@ async def test_ib_connection():
     except Exception as e:
         print(f"IB connection test failed: {e}")
         return False
+    
+    
+async def get_fx_contract_details(key):
 
-async def get_contract_details(futures_contract: futuresContract):
+    ib = ServerData.ib
+
+    fx_pair = key.split("/")[0]
+
+    ibcontract = Forex(fx_pair)
+
+    # Use the asynchronous API to request contract details.
+    contract_details_list = await ib.reqContractDetailsAsync(ibcontract)
+
+    ibcontract_list = [
+        contract_details.contract for contract_details in contract_details_list 
+    ]
+
+    if len(ibcontract_list) > 1:
+        print(
+            "Got multiple contracts for %s when only expected a single contract: Check contract date"
+            % str(ibcontract)
+        )
+        return key, None
+
+    if len(ibcontract_list) == 0:
+        print("Failed to resolve contract %s" % str(ibcontract))
+        return key, None
+
+    resolved_contract = ibcontract_list[0]
+
+    # Find the corresponding ContractDetails object in contract_details_list
+    resolved_contract_details = next(
+        (cd for cd in contract_details_list if cd.contract == resolved_contract), 
+        None
+    )
+    if resolved_contract_details is None:
+        raise Exception("No matching ContractDetails found for the resolved contract.")
+
+    return key, resolved_contract_details
+    
+    
+
+async def get_futures_contract_details(futures_contract: futuresContract):
     
     """
     Given an already-connected IB instance, create the contract
@@ -86,7 +132,6 @@ async def get_contract_details(futures_contract: futuresContract):
     ibcontract_list = [
         contract_details.contract for contract_details in contract_details_list 
     ]
-
     
     try:
         resolved_contract = resolve_unique_contract_from_ibcontract_list(
@@ -100,7 +145,7 @@ async def get_contract_details(futures_contract: futuresContract):
         )
         return futures_contract.key, None        
 
-            # Find the corresponding ContractDetails object in contract_details_list
+    # Find the corresponding ContractDetails object in contract_details_list
     resolved_contract_details = next(
         (cd for cd in contract_details_list if cd.contract == resolved_contract), 
         None
@@ -108,6 +153,23 @@ async def get_contract_details(futures_contract: futuresContract):
     if resolved_contract_details is None:
         raise Exception("No matching ContractDetails found for the resolved contract.")
 
-    # Return the key and the resolved ContractDetails object.
     return futures_contract.key, resolved_contract_details
     
+
+async def main():
+    # 1. Connect to IB
+    ib = IB()
+    await ib.connectAsync(host='127.0.0.1', port=7497, clientId=1)
+    ServerData.ib = ib
+
+    # 2. Test the get_fx_contract_details function
+    key = "USDCAD/FX"
+    details = await get_fx_contract_details(key)
+
+    print(details)
+
+    # 4. Disconnect from IB
+    ib.disconnect()
+
+if __name__ == "__main__":
+    asyncio.run(main())

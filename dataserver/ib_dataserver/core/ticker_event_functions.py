@@ -26,8 +26,11 @@ from collections import defaultdict
 
 
 # Directory to store Parquet files
-PARQUET_PATH = os.path.expanduser("/mnt/nas/parquet_tick_data/")
-os.makedirs(PARQUET_PATH, exist_ok=True)
+PARQUET_PATH = Path("/mnt/nas/parquet_tick_data/")
+FUTURES_PATH = PARQUET_PATH / "ib_futures"
+FX_PATH = PARQUET_PATH / "ib_fx"
+
+# os.makedirs(PARQUET_PATH, exist_ok=True)
 
 MAX_SUBSCRIPTIONS = 199  # Max allowed instruments to subscribe at a time
 
@@ -39,28 +42,29 @@ async def subscription_loop():
     This function should be run in a dedicated thread.
     """
 
+    # Dict of currently tracked tickers
     ticker_dict = ServerData.ticker_dict
+    
     data_contract_obj = ServerData.data_contracts
+
     # broker_obj = ServerData.broker_futures_contract_data
 
     # Load the full list of instruments (used for both queue and priority ordering).
     instrument_priority_list = load_instr_list()
+
     # Create a mapping from instrument_code to its priority (lower index means higher priority)
-    instrument_priority_map = {code: i for i, code in enumerate(instrument_priority_list)}
-    
+    instrument_priority_map = {
+        instr: i
+        for i, (instr, contract_type) in enumerate(instrument_priority_list)
+    }
+
     # Copy the list for processing subscriptions (we'll pop from this queue)
     instrument_queue = instrument_priority_list.copy()
 
-    # Build a mapping: instrument_code -> list of ticker_dict keys
-    tracked_codes_to_keys = defaultdict(list)
-    for key, (futures_contract, _) in ticker_dict.items():
-        tracked_codes_to_keys[futures_contract.instrument_code].append(key)
-
-    # Build the ticker_keys_priority_sorted list from already subscribed instruments,
-    # sorting by the instrument's priority.
-    ticker_keys_priority_sorted = list(ticker_dict.keys())
-    ticker_keys_priority_sorted.sort(key=lambda key: instrument_priority_map.get(ticker_dict[key][0].instrument_code, float('inf')))
-
+    ticker_keys_priority_sorted = sorted(
+        ticker_dict.keys(),
+        key=lambda key: instrument_priority_map.get(key.split('/', 1)[0], float('inf'))
+    )
     # valid_subscriptions = len(ticker_keys_priority_sorted)
 
     valid_subscriptions = 0
@@ -76,22 +80,34 @@ async def subscription_loop():
             # instrument_queue = load_instr_list().copy()
             # continue
 
-        instrument_code = instrument_queue.pop(0)
+        (instrument_code, contract_type) = instrument_queue.pop(0)
 
         # Skip if we're already tracking this instrument.
-        if instrument_code in tracked_codes_to_keys:
-            valid_subscriptions += 1
-            continue
+        # if instrument_code in tracked_codes_to_keys:
+        #     valid_subscriptions += 1
+        #     continue
 
         # Create a futuresContract and check if we're already subscribed.
-        price_contract_id = data_contract_obj.get_priced_contract_id(instrument_code)
-        futures_contract = futuresContract(instrument_code, price_contract_id)
-        key = futures_contract.key
-        if key in ticker_dict:
-            continue
+        # print(contract_type)
+        if contract_type == "Future":
 
-        # Check if the market is open for this contract.
-        if not await is_market_open(futures_contract):
+            price_contract_id = data_contract_obj.get_priced_contract_id(instrument_code)
+            futures_contract = futuresContract(instrument_code, price_contract_id)
+            key = futures_contract.key
+            # Skip if we're already tracking this instrument
+            if key in ticker_dict:
+                valid_subscriptions += 1
+                continue
+
+            # Check if the market is open for this contract.
+
+        elif contract_type == "Forex":
+            key = instrument_code + "/FX"
+            if key in ticker_dict:
+                valid_subscriptions += 1
+                continue
+            
+        if not await is_market_open(key):
             print(f"[INFO] Market closed for {instrument_code}; skipping...")
             continue
 
@@ -105,28 +121,33 @@ async def subscription_loop():
             valid_subscriptions -= 1
 
         # Get the IB contract and ticker.
-        ib_contract = await get_ib_contract(futures_contract)
+        ib_contract = await get_ib_contract(key)
+
         ib_ticker = get_ib_ticker(ib_contract)
 
         # Subscribe by saving the subscription in ticker_dict and wiring up the event.
-        ticker_dict[key] = (futures_contract, ib_ticker)
+        ticker_dict[key] = ib_ticker
         ib_ticker.updateEvent += lambda ticker, code=key: on_price_update(ticker, code)
         print(f"[INFO] Subscribed to {key}, {valid_subscriptions}")
 
-        # Update tracked_codes_to_keys mapping.
-        tracked_codes_to_keys[instrument_code].append(key)
+        # # Update tracked_codes_to_keys mapping.
+        # tracked_codes_to_keys[instrument_code].append(key)
 
         # Insert the new key into ticker_keys_priority_sorted in the correct position.
-        new_priority = instrument_priority_map.get(instrument_code, float('inf'))
+        new_instr = key.split('/', 1)[0]
+        new_priority = instrument_priority_map.get(new_instr, float('inf'))
+
         insertion_index = 0
         for i, existing_key in enumerate(ticker_keys_priority_sorted):
-            existing_code = ticker_dict[existing_key][0].instrument_code
-            existing_priority = instrument_priority_map.get(existing_code, float('inf'))
+            # extract existing instrument code from the key itself
+            existing_instr = existing_key.split('/', 1)[0]
+            existing_priority = instrument_priority_map.get(existing_instr, float('inf'))
             if new_priority < existing_priority:
                 insertion_index = i
                 break
         else:
             insertion_index = len(ticker_keys_priority_sorted)
+
         ticker_keys_priority_sorted.insert(insertion_index, key)
 
         valid_subscriptions += 1
@@ -142,20 +163,20 @@ def get_ib_ticker(ib_contract):
 def on_price_update(ticker: Ticker, key: str):
     """Callback function when new market data arrives."""
     data_tick = oneTick(ticker.bid, ticker.ask, ticker.bidSize, ticker.askSize)
-    ticker_dict = ServerData.ticker_dict
+    # ticker_dict = ServerData.ticker_dict
 
     # Check for NaN or negative values
     if np.any(np.isnan([data_tick.bid_price, data_tick.ask_price, data_tick.bid_size, data_tick.ask_size])) or \
        any(x < 0 for x in [data_tick.bid_price, data_tick.ask_price, data_tick.bid_size, data_tick.ask_size]):
-        # Look up the contract for this key
-        futures_contract, _ = ticker_dict.get(key, (None, None))
-        if futures_contract:
-            # Use the cached trading hours to check if it is currently okay to trade
-            if not is_market_open_sync(futures_contract):
-                print(data_tick.bid_price, data_tick.ask_price, data_tick.bid_size, data_tick.ask_size)
-                print(f"[INFO] Unsubscribing from {key} due to market closure (bad data & trading hours).")
-                unsubscribe_from_market_data(key)
-                return
+        # # Look up the contract for this key
+        # futures_contract, _ = ticker_dict.get(key, (None, None))
+        # if futures_contract:
+        #     # Use the cached trading hours to check if it is currently okay to trade
+        if not is_market_open_sync(key):
+            print(data_tick.bid_price, data_tick.ask_price, data_tick.bid_size, data_tick.ask_size)
+            print(f"[INFO] Unsubscribing from {key} due to market closure (bad data & trading hours).")
+            unsubscribe_from_market_data(key)
+            return
         print(f"[WARNING] {key} | Received bad data, but market appears open. Ignoring bad tick.")
         return
 
@@ -248,7 +269,12 @@ async def save_to_parquet(key):
     # ----------------------------------------------------------------------------
     # Block 3: Build contract directory and ensure it exists.
     # ----------------------------------------------------------------------------
-    contract_dir = Path(PARQUET_PATH) / instrument_code / f"contract={contract}"
+
+    if contract == "FX":
+        contract_dir = FX_PATH/ instrument_code
+    else:
+        contract_dir = FUTURES_PATH / instrument_code / f"contract={contract}"
+
     contract_dir.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------------------------

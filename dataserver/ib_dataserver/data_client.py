@@ -12,8 +12,8 @@ if __name__ == "__main__":
     # data = dataBlob()
     # data_broker = dataBroker(data)
 
-    instrument_code = "US10"
-    contract_id = "20250900"
+    instrument_code = "IBEX"
+    contract_id = "20250700"
     futures_contract = futuresContract(instrument_code, contract_id)
 
     ib_obj = ibFuturesContractPriceData(None, None)
